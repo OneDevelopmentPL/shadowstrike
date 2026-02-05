@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ShadowStrike: Neon Warfare</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Orbitron', sans-serif; color: #fff; touch-action: none; }
+        canvas { display: block; }
+        
+        #hud {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex; flex-direction: column; justify-content: space-between;
+            padding: 20px; box-sizing: border-box;
+            text-shadow: 0 0 15px rgba(0, 240, 255, 0.8);
+        }
+
+        #top-bar { display: flex; justify-content: space-between; align-items: center; }
+        #currency-info { font-size: 20px; color: #00ff00; font-weight: bold; }
+        #score { font-size: 24px; font-weight: bold; color: #00f0ff; }
+
+        #inventory-bar {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 10px; pointer-events: auto;
+        }
+        .inv-slot {
+            width: 55px; height: 55px; background: rgba(0,0,0,0.85);
+            border: 2px solid #333; border-radius: 8px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-size: 10px; position: relative; color: #aaa;
+        }
+        .inv-slot.active { border-color: #00f0ff; box-shadow: 0 0 15px #00f0ff; color: #fff; transform: scale(1.1); }
+        
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
+            transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;
+        }
+        #crosshair::before { content: ''; position: absolute; width: 2px; height: 100%; background: #00f0ff; }
+        #crosshair::after { content: ''; position: absolute; width: 100%; height: 2px; background: #00f0ff; }
+
+        #overlay, #death-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, rgba(15, 15, 35, 0.98) 0%, rgba(0, 0, 0, 1) 100%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; text-align: center;
+        }
+        #death-screen { display: none; }
+
+        .btn {
+            background: rgba(0,0,0,0.5); border: 2px solid #00f0ff; color: #00f0ff;
+            padding: 12px 30px; font-size: 16px; cursor: pointer; transition: 0.3s;
+            text-transform: uppercase; font-weight: bold; margin: 10px;
+            pointer-events: auto;
+        }
+        .btn:hover { background: #00f0ff; color: #000; box-shadow: 0 0 25px #00f0ff; }
+
+        .settings-row { margin: 15px 0; color: #00f0ff; pointer-events: auto; }
+        input[type=range] { cursor: pointer; width: 250px; }
+
+        #announcement {
+            position: absolute; top: 25%; left: 50%; transform: translateX(-50%);
+            color: #ffff00; font-weight: bold; font-size: 24px; opacity: 0; transition: opacity 0.5s;
+            text-shadow: 0 0 10px #ffff00; text-align: center;
+        }
+
+        #health-bar-ui { width: 200px; height: 10px; background: #111; border: 1px solid #333; margin-top: 10px; border-radius: 5px; overflow: hidden; }
+        #health-fill { width: 100%; height: 100%; background: #ff0055; transition: width 0.3s; }
+
+        #mobile-controls {
+            display: none; position: absolute; bottom: 40px; width: 100%;
+            pointer-events: none; z-index: 100;
+        }
+        #joystick-zone {
+            position: absolute; bottom: 0; left: 40px; width: 150px; height: 150px;
+            background: rgba(255,255,255,0.05); border: 2px solid rgba(0,240,255,0.2);
+            border-radius: 50%; pointer-events: auto;
+        }
+        #joystick-stick {
+            position: absolute; top: 50%; left: 50%; width: 60px; height: 60px;
+            background: #00f0ff; border-radius: 50%; transform: translate(-50%, -50%);
+        }
+        #mobile-fire {
+            position: absolute; bottom: 20px; right: 40px; width: 100px; height: 100px;
+            background: rgba(255,0,85,0.3); border: 3px solid #ff0055; border-radius: 50%;
+            pointer-events: auto; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; color: #fff;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div id="overlay">
+        <h1 style="letter-spacing: 8px; text-shadow: 0 0 30px #00f0ff; margin-bottom: 5px;">SHADOWSTRIKE</h1>
+        <p style="color: #ff00ff; margin-bottom: 30px; font-size: 14px;">By Iwo W. (OneDevelopment)</p>
+        
+        <div class="settings-row">
+            CZUŁOŚĆ MYSZY (HYPER-DPI): <br>
+            <input type="range" id="sens-slider" min="1" max="1000" value="100">
+            <div id="sens-value" style="font-size: 12px; margin-top: 5px;">1.00x</div>
+        </div>
+
+        <div class="settings-row">
+            <button id="toggle-mobile" class="btn" style="font-size: 12px; padding: 5px 15px;">WŁĄCZ TRYB MOBILNY</button>
+        </div>
+
+        <button id="start-btn" class="btn">INICJUJ PROTOKÓŁ</button>
+    </div>
+
+    <div id="death-screen">
+        <h1 style="color: #ff0055;">KRYTYCZNY BŁĄD</h1>
+        <button id="restart-btn" class="btn">REBOOT</button>
+    </div>
+
+    <div id="hud">
+        <div id="top-bar">
+            <div id="currency-info">KREDYTY: <span id="money-val">0</span></div>
+            <div id="score">SZCZĄTKI: <span id="kills-val">0</span></div>
+        </div>
+        <div id="announcement">INITIALIZING...</div>
+        <div id="crosshair"></div>
+        <div id="health-bar-ui"><div id="health-fill"></div></div>
+        <div id="inventory-bar">
+            <div class="inv-slot active" data-index="0">1<br><span class="slot-name">-</span></div>
+            <div class="inv-slot" data-index="1">2<br><span class="slot-name">-</span></div>
+            <div class="inv-slot" data-index="2">3<br><span class="slot-name">-</span></div>
+            <div class="inv-slot" data-index="3">4<br><span class="slot-name">-</span></div>
+            <div class="inv-slot" data-index="4">5<br><span class="slot-name">-</span></div>
+        </div>
+    </div>
+
+    <div id="mobile-controls">
+        <div id="joystick-zone"><div id="joystick-stick"></div></div>
+        <div id="mobile-fire">FIRE</div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        let scene, camera, renderer, clock;
+        let player, gameState;
+        let enemies = [], bullets = [], interactivePoints = [], obstacles = [];
+        let keys = {}, mouseLocked = false;
+        
+        let isMobile = false;
+        let joystickActive = false;
+        let joystickPos = { x: 0, y: 0 };
+
+        const RARITIES = {
+            COMMON: { name: 'Pospolity', color: 0x888888, mult: 1 },
+            RARE: { name: 'Rzadki', color: 0x0070ff, mult: 2.5 },
+            EPIC: { name: 'Epicki', color: 0xa335ee, mult: 5 },
+            LEGENDARY: { name: 'Legendarny', color: 0xff8000, mult: 12 },
+            MYTHIC: { name: 'Mityczny', color: 0xff0000, mult: 30 }
+        };
+
+        const WEAPON_TYPES = [
+            // Domyślna broń: dmg 0.7 * rzadkość (1.0) = 0.7. 
+            // Przeciwnik fali 1 ma 3.5 HP. 3.5 / 0.7 = 5 strzałów.
+            { name: 'Neon Pulsar', rate: 220, damage: 0.7 }, 
+            { name: 'Void Repeater', rate: 120, damage: 0.9 },
+            { name: 'Plasma Cannon', rate: 550, damage: 5.0 },
+            { name: 'Cyber Glock', rate: 380, damage: 2.5 }
+        ];
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x010103);
+            scene.fog = new THREE.FogExp2(0x010103, 0.015);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            player = {
+                height: 1.8, speed: 0.22, 
+                sens: 0.003, // Zwiększona bazowa czułość
+                health: 100, kills: 0, money: 0,
+                velocity: new THREE.Vector3(),
+                pitch: 0, yaw: 0,
+                canJump: true,
+                inventory: [null, null, null, null, null],
+                activeSlot: 0,
+                lastShot: 0,
+                inShop: false
+            };
+
+            player.inventory[0] = { ...WEAPON_TYPES[0], rarity: RARITIES.COMMON };
+            gameState = { isRunning: false, wave: 1, enemiesToSpawn: 6 };
+
+            setupLights();
+            setupWorld();
+            setupShopZone();
+            updateInventoryUI();
+            setupMobileHandlers();
+            
+            // Logika zmiany czułości (DPI)
+            const sensSlider = document.getElementById('sens-slider');
+            const sensLabel = document.getElementById('sens-value');
+            
+            const updateSens = () => {
+                const multiplier = sensSlider.value / 100;
+                // Wyższy bazowy mnożnik dla "jeszcze szybszego DPI"
+                player.sens = 0.003 * multiplier; 
+                sensLabel.innerText = (multiplier * 1.5).toFixed(2) + "x";
+            };
+            
+            sensSlider.addEventListener('input', updateSens);
+            updateSens(); 
+
+            document.getElementById('toggle-mobile').onclick = () => {
+                isMobile = !isMobile;
+                document.getElementById('mobile-controls').style.display = isMobile ? 'block' : 'none';
+                document.getElementById('toggle-mobile').innerText = isMobile ? "WYŁĄCZ TRYB MOBILNY" : "WŁĄCZ TRYB MOBILNY";
+            };
+
+            window.addEventListener('keydown', (e) => {
+                keys[e.code] = true;
+                if (e.key >= '1' && e.key <= '5') {
+                    player.activeSlot = parseInt(e.key) - 1;
+                    updateInventoryUI();
+                }
+            });
+            window.addEventListener('keyup', e => keys[e.code] = false);
+            window.addEventListener('mousedown', () => { if(gameState.isRunning && !player.inShop) shoot(); });
+            
+            document.addEventListener('mousemove', handleCameraRotation);
+            document.addEventListener('pointerlockchange', () => mouseLocked = !!document.pointerLockElement);
+            window.addEventListener('resize', onWindowResize);
+
+            animate();
+        }
+
+        function handleCameraRotation(e) {
+            if (!mouseLocked || !gameState.isRunning || isMobile) return;
+            player.yaw -= e.movementX * player.sens;
+            player.pitch -= e.movementY * player.sens;
+            player.pitch = Math.max(-Math.PI/2.1, Math.min(Math.PI/2.1, player.pitch));
+            camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+        }
+
+        function setupLights() {
+            scene.add(new THREE.AmbientLight(0xffffff, 0.1));
+            const mainLight = new THREE.PointLight(0x00f0ff, 1.5, 300);
+            mainLight.position.set(0, 50, 0);
+            scene.add(mainLight);
+        }
+
+        function setupWorld() {
+            const floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(1000, 1000),
+                new THREE.MeshStandardMaterial({ color: 0x050510 })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            scene.add(floor);
+            
+            const grid = new THREE.GridHelper(1000, 100, 0x00f0ff, 0x0a0a25);
+            scene.add(grid);
+
+            for(let i=0; i<40; i++) {
+                const w = 2 + Math.random() * 6;
+                const h = 2 + Math.random() * 12;
+                const d = 2 + Math.random() * 6;
+                const geom = new THREE.BoxGeometry(w, h, d);
+                const neonColor = Math.random() > 0.5 ? 0x00f0ff : 0xff00ff;
+                
+                const blockGroup = new THREE.Group();
+                const coreMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+                const core = new THREE.Mesh(geom, coreMat);
+                blockGroup.add(core);
+
+                const wireGeom = new THREE.EdgesGeometry(geom);
+                const wireMat = new THREE.LineBasicMaterial({ color: neonColor, linewidth: 2 });
+                const wire = new THREE.LineSegments(wireGeom, wireMat);
+                blockGroup.add(wire);
+                
+                let rx, rz;
+                do {
+                    rx = (Math.random() - 0.5) * 180;
+                    rz = (Math.random() - 0.5) * 180;
+                } while (Math.abs(rx) < 15 && Math.abs(rz) < 15);
+
+                blockGroup.position.set(rx, h/2, rz);
+                scene.add(blockGroup);
+                
+                core.position.copy(blockGroup.position);
+                obstacles.push(core);
+            }
+
+            const shopEntrance = createInteractive(0x00ff88, 15, 0, 15, "TELEPORT DO SKLEPU");
+            shopEntrance.userData = { type: 'tp_to_shop' };
+            interactivePoints.push(shopEntrance);
+
+            const sellPoint = createInteractive(0xff0044, -15, 0, -15, "SPRZEDAJ SZCZĄTKI");
+            sellPoint.userData = { type: 'sell' };
+            interactivePoints.push(sellPoint);
+        }
+
+        function setupShopZone() {
+            const shopOffset = new THREE.Vector3(500, 0, 500);
+            const sFloor = new THREE.Mesh(
+                new THREE.PlaneGeometry(60, 60),
+                new THREE.MeshStandardMaterial({ color: 0x0a0a15, emissive: 0x00ff88, emissiveIntensity: 0.05 })
+            );
+            sFloor.rotation.x = -Math.PI / 2;
+            sFloor.position.copy(shopOffset);
+            scene.add(sFloor);
+
+            const offers = [
+                { weapon: WEAPON_TYPES[1], rarity: RARITIES.RARE, price: 500, pos: [-10, 0, -10] },
+                { weapon: WEAPON_TYPES[2], rarity: RARITIES.EPIC, price: 1500, pos: [0, 0, -10] },
+                { weapon: WEAPON_TYPES[3], rarity: RARITIES.LEGENDARY, price: 5000, pos: [10, 0, -10] },
+                { name: "APTECZKA", price: 250, type: 'heal', pos: [0, 0, 10] }
+            ];
+
+            offers.forEach(o => {
+                let color = o.rarity ? o.rarity.color : 0xffff00;
+                let label = o.weapon ? `${o.rarity.name} ${o.weapon.name}` : o.name;
+                const itemPoint = createInteractive(color, shopOffset.x + o.pos[0], 0, shopOffset.z + o.pos[2], `${label}\nKOSZT: ${o.price} CR`);
+                itemPoint.userData = { ...o, type: o.type || 'weapon_buy' };
+                interactivePoints.push(itemPoint);
+            });
+
+            const exitPoint = createInteractive(0xff00ff, shopOffset.x, 0, shopOffset.z - 20, "POWRÓT NA ARENĘ");
+            exitPoint.userData = { type: 'tp_to_arena' };
+            interactivePoints.push(exitPoint);
+        }
+
+        function createInteractive(color, x, y, z, label) {
+            const group = new THREE.Group();
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(2, 0.1, 16, 32), new THREE.MeshBasicMaterial({ color: color }));
+            ring.rotation.x = Math.PI / 2;
+            group.add(ring);
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 512; canvas.height = 128;
+            ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+            ctx.font = 'bold 40px Orbitron';
+            ctx.textAlign = 'center';
+            ctx.fillText(label.split('\n')[0], 256, 50);
+            if(label.split('\n')[1]) ctx.fillText(label.split('\n')[1], 256, 100);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+            sprite.position.y = 3.5;
+            sprite.scale.set(6, 1.5, 1);
+            group.add(sprite);
+
+            group.position.set(x, 0.1, z);
+            scene.add(group);
+            return group;
+        }
+
+        function setupMobileHandlers() {
+            const stick = document.getElementById('joystick-stick');
+            const zone = document.getElementById('joystick-zone');
+            const fire = document.getElementById('mobile-fire');
+
+            zone.addEventListener('touchstart', (e) => { joystickActive = true; }, {passive: false});
+            window.addEventListener('touchmove', (e) => {
+                if(!joystickActive) {
+                    const touch = e.touches[0];
+                    if (touch.clientX > window.innerWidth / 2) {
+                        player.yaw -= (touch.clientX - (player.lastTouchX || touch.clientX)) * 0.01;
+                        player.pitch = Math.max(-1.5, Math.min(1.5, player.pitch - (touch.clientY - (player.lastTouchY || touch.clientY)) * 0.01));
+                        camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+                    }
+                    player.lastTouchX = touch.clientX;
+                    player.lastTouchY = touch.clientY;
+                    return;
+                }
+                const touch = e.touches[0];
+                const rect = zone.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const dx = touch.clientX - centerX;
+                const dy = touch.clientY - centerY;
+                const dist = Math.min(75, Math.sqrt(dx*dx + dy*dy));
+                const angle = Math.atan2(dy, dx);
+                
+                joystickPos.x = (Math.cos(angle) * dist) / 75;
+                joystickPos.y = (Math.sin(angle) * dist) / 75;
+
+                stick.style.left = `calc(50% + ${Math.cos(angle) * dist}px)`;
+                stick.style.top = `calc(50% + ${Math.sin(angle) * dist}px)`;
+            }, {passive: false});
+
+            window.addEventListener('touchend', () => { 
+                joystickActive = false; 
+                joystickPos = {x: 0, y: 0};
+                stick.style.left = '50%'; stick.style.top = '50%';
+                player.lastTouchX = null; player.lastTouchY = null;
+            });
+
+            fire.addEventListener('touchstart', (e) => { if(gameState.isRunning && !player.inShop) shoot(); e.preventDefault(); });
+        }
+
+        function shoot() {
+            const weapon = player.inventory[player.activeSlot];
+            if (!weapon || Date.now() - player.lastShot < weapon.rate) return;
+            player.lastShot = Date.now();
+
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshBasicMaterial({ color: weapon.rarity.color }));
+            const dir = new THREE.Vector3();
+            camera.getWorldDirection(dir);
+            b.position.copy(camera.position).add(dir.clone().multiplyScalar(1.2));
+            b.userData = { vel: dir.multiplyScalar(3.5), damage: weapon.damage * weapon.rarity.mult, life: 100 };
+            bullets.push(b);
+            scene.add(b);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (!gameState.isRunning) return;
+
+            const moveDir = new THREE.Vector3();
+            const f = new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), player.yaw));
+            const r = new THREE.Vector3(1,0,0).applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), player.yaw));
+            
+            if (isMobile) {
+                moveDir.add(f.clone().multiplyScalar(-joystickPos.y));
+                moveDir.add(r.clone().multiplyScalar(joystickPos.x));
+            } else {
+                if (keys['KeyW']) moveDir.add(f);
+                if (keys['KeyS']) moveDir.add(f.clone().negate());
+                if (keys['KeyA']) moveDir.add(r.clone().negate());
+                if (keys['KeyD']) moveDir.add(r);
+            }
+
+            if(moveDir.length() > 0) {
+                moveDir.normalize();
+                player.velocity.x = moveDir.x * player.speed;
+                player.velocity.z = moveDir.z * player.speed;
+            } else {
+                player.velocity.x *= 0.8; player.velocity.z *= 0.8;
+            }
+
+            player.velocity.y -= 0.018;
+            camera.position.add(player.velocity);
+            
+            if(camera.position.y < player.height) { camera.position.y = player.height; player.velocity.y = 0; player.canJump = true; }
+            if(keys['Space'] && player.canJump) { player.velocity.y = 0.4; player.canJump = false; }
+
+            obstacles.forEach(o => {
+                const dx = Math.abs(camera.position.x - o.position.x);
+                const dz = Math.abs(camera.position.z - o.position.z);
+                const buffer = 1.0;
+                if(dx < o.geometry.parameters.width/2 + buffer && dz < o.geometry.parameters.depth/2 + buffer) {
+                    camera.position.sub(player.velocity);
+                }
+            });
+
+            interactivePoints.forEach(p => {
+                if(camera.position.distanceTo(p.position) < 2.5) {
+                    const data = p.userData;
+                    if(data.type === 'tp_to_shop') {
+                        camera.position.set(500, player.height, 500);
+                        player.inShop = true;
+                        announce("STREFA HANDLU");
+                    } else if(data.type === 'tp_to_arena') {
+                        camera.position.set(0, player.height, 0);
+                        player.inShop = false;
+                        announce("POWRÓT NA ARENĘ");
+                    } else if(data.type === 'sell' && player.kills > 0) {
+                        player.money += player.kills * 150;
+                        player.kills = 0;
+                        updateStats();
+                        announce("SZCZĄTKI SPRZEDANE");
+                    } else if(data.type === 'weapon_buy' || data.type === 'heal') {
+                        if(player.money >= data.price) {
+                            player.money -= data.price;
+                            if(data.type === 'heal') player.health = 100;
+                            else addItemToInventory({...data.weapon, rarity: data.rarity});
+                            updateStats();
+                            announce("ZAKUPIONO");
+                        }
+                    }
+                }
+            });
+
+            if(!player.inShop) {
+                bullets.forEach((b, i) => {
+                    b.position.add(b.userData.vel);
+                    b.userData.life--;
+                    enemies.forEach((e, ei) => {
+                        if(b.position.distanceTo(e.position) < 2) {
+                            e.userData.hp -= b.userData.damage;
+                            b.userData.life = 0;
+                            if(e.userData.hp <= 0) { scene.remove(e); enemies.splice(ei, 1); player.kills++; updateStats(); }
+                        }
+                    });
+                    if(b.userData.life <= 0) { scene.remove(b); bullets.splice(i, 1); }
+                });
+
+                enemies.forEach(e => {
+                    const d = new THREE.Vector3().subVectors(camera.position, e.position);
+                    d.y = 0; d.normalize();
+                    e.position.add(d.multiplyScalar(0.12));
+                    if(e.position.distanceTo(camera.position) < 2) {
+                        player.health -= 0.4;
+                        document.getElementById('health-fill').style.width = player.health + '%';
+                        if(player.health <= 0) gameOver();
+                    }
+                });
+
+                if(enemies.length < 5 && gameState.enemiesToSpawn > 0) { spawnEnemy(); gameState.enemiesToSpawn--; }
+                if(enemies.length === 0 && gameState.enemiesToSpawn === 0) { 
+                    gameState.wave++; 
+                    gameState.enemiesToSpawn = 5 + gameState.wave * 2; 
+                    announce("FALA " + gameState.wave);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function spawnEnemy() {
+            const e = new THREE.Mesh(new THREE.OctahedronGeometry(1.5), new THREE.MeshStandardMaterial({ color: 0x000, emissive: 0xff00ff, emissiveIntensity: 2 }));
+            const a = Math.random()*Math.PI*2;
+            e.position.set(Math.cos(a)*60, 1.5, Math.sin(a)*60);
+            // HP bazowe fali 1: 2 + 1 * 1.5 = 3.5. 
+            e.userData = { hp: 2 + gameState.wave * 1.5 };
+            enemies.push(e);
+            scene.add(e);
+        }
+
+        function addItemToInventory(item) {
+            for(let i=0; i<5; i++) if(!player.inventory[i]) { player.inventory[i] = item; updateInventoryUI(); return; }
+            player.inventory[player.activeSlot] = item;
+            updateInventoryUI();
+        }
+
+        function updateInventoryUI() {
+            const slots = document.querySelectorAll('.inv-slot');
+            slots.forEach((slot, i) => {
+                slot.classList.toggle('active', i === player.activeSlot);
+                const item = player.inventory[i];
+                const text = slot.querySelector('.slot-name');
+                if (item) {
+                    text.innerText = item.name;
+                    text.style.color = '#' + item.rarity.color.toString(16).padStart(6, '0');
+                } else { text.innerText = '-'; }
+            });
+        }
+
+        function announce(txt) {
+            const a = document.getElementById('announcement');
+            a.innerText = txt; a.style.opacity = 1;
+            setTimeout(() => a.style.opacity = 0, 2000);
+        }
+
+        function updateStats() {
+            document.getElementById('money-val').innerText = player.money;
+            document.getElementById('kills-val').innerText = player.kills;
+        }
+
+        function gameOver() {
+            gameState.isRunning = false;
+            document.exitPointerLock();
+            document.getElementById('death-screen').style.display = 'flex';
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        document.getElementById('start-btn').onclick = () => {
+            document.getElementById('overlay').style.display = 'none';
+            if(!isMobile) renderer.domElement.requestPointerLock();
+            gameState.isRunning = true;
+            announce("SYSTEM ACTIVE");
+        };
+
+        document.getElementById('restart-btn').onclick = () => location.reload();
+
+        window.onload = init;
+    </script>
+</body>
+</html>
